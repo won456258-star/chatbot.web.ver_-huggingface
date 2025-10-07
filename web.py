@@ -1,4 +1,4 @@
-# 파일명: web.py (Hugging Face API 연동 최종 버전)
+# 파일명: web.py
 
 # --- 1. 필수 라이브러리 임포트 ---
 import streamlit as st
@@ -6,16 +6,29 @@ import streamlit.components.v1 as components
 import os
 from dotenv import load_dotenv
 
-# .env 파일에서 환경 변수를 로드합니다. (로컬 테스트 시 필요)
-load_dotenv()
-
-# rag_logic.py에서 RAG 체인을 가져오는 함수를 임포트합니다.
+# rag_logic.py에서 RAG 체인을 가져오는 함수를 임포트
 from rag_logic import get_rag_chain
 
-# --- 2. 페이지 설정 및 CSS ---
+# --- 2. API 키 및 RAG 체인 로드 ---
+# Streamlit Secrets에서 API 키를 우선적으로 확인
+try:
+    # st.secrets에 키가 있는지 확인
+    HUGGINGFACE_API_KEY = st.secrets["HUGGINGFACEHUB_API_TOKEN"]
+except (FileNotFoundError, KeyError):
+    # Secrets에 키가 없는 경우 (주로 로컬 개발 환경) .env 파일에서 로드
+    print("Secrets not found, loading from .env file.")
+    load_dotenv()
+    HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACEHUB_API_TOKEN")
+
+# 로드한 API 키를 get_rag_chain 함수에 전달하여 RAG 체인 생성
+if HUGGINGFACE_API_KEY:
+    rag_chain = get_rag_chain(HUGGINGFACE_API_KEY)
+else:
+    rag_chain = None # API 키가 없으면 rag_chain을 None으로 설정
+
+# --- 3. 페이지 설정 및 CSS ---
 st.set_page_config(page_title="모구챗 - My RAG 챗봇", page_icon="✨", layout="centered")
 
-# (CSS 코드는 원본과 동일)
 st.markdown("""
 <style>
     /* Noto Sans KR 폰트 로드 */
@@ -25,99 +38,43 @@ st.markdown("""
     html, body, [class*="st-"] {
         font-family: 'Noto Sans KR', sans-serif;
     }
-
-    /* Streamlit의 메인 콘텐츠 영역 스타일 제거 및 커스텀 */
-    .st-emotion-cache-1y4p8pa {
-        padding: 0;
-    }
-    
-    /* 전체 앱 컨테이너 */
-    .stApp {
-        background: linear-gradient(135deg, #F9F5FF 0%, #E2E1FF 100%);
-    }
-
-    /* 채팅 컨테이너 (스크롤 영역) */
+    .st-emotion-cache-1y4p8pa { padding: 0; }
+    .stApp { background: linear-gradient(135deg, #F9F5FF 0%, #E2E1FF 100%); }
     .st-emotion-cache-1f1G203 {
-        background-color: white;
-        border-radius: 1.5rem;
-        padding: 1.5rem;
-        margin: 1rem;
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        height: 85vh;
-        padding-bottom: 5rem;
+        background-color: white; border-radius: 1.5rem; padding: 1.5rem; margin: 1rem;
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1); border: 1px solid rgba(255, 255, 255, 0.18);
+        height: 85vh; padding-bottom: 5rem;
     }
-    
-    /* 챗봇(assistant) 메시지 버블 스타일 */
     [data-testid="stChatMessage"][data-testid-role="assistant"] .st-emotion-cache-124el85 {
-        background-color: #F0F0F5;
-        border-radius: 20px 20px 20px 5px;
-        color: #111;
-        border: 1px solid #E5E7EB;
-        animation: fadeIn 0.5s ease-in-out;
+        background-color: #F0F0F5; border-radius: 20px 20px 20px 5px; color: #111;
+        border: 1px solid #E5E7EB; animation: fadeIn 0.5s ease-in-out;
     }
-    
-    /* 챗봇(assistant) 아바타 아이콘 스타일 */
     [data-testid="stChatMessage"][data-testid-role="assistant"] .st-emotion-cache-t3u2ir {
-        background: linear-gradient(45deg, #7A42E2, #9469F4);
-        color: white;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        background: linear-gradient(45deg, #7A42E2, #9469F4); color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
-
-    /* 사용자(user) 메시지 버블 스타일 */
     [data-testid="stChatMessage"][data-testid-role="user"] .st-emotion-cache-124el85 {
-        background: linear-gradient(45deg, #7A42E2, #9469F4);
-        border-radius: 20px 20px 5px 20px;
-        color: white;
-        animation: fadeIn 0.5s ease-in-out;
+        background: linear-gradient(45deg, #7A42E2, #9469F4); border-radius: 20px 20px 5px 20px;
+        color: white; animation: fadeIn 0.5s ease-in-out;
     }
-    
-    /* FAQ 카드 스타일 */
     .faq-card {
-        background-color: rgba(249, 245, 255, 0.8);
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        padding: 1.2rem;
-        border-radius: 1rem;
-        margin-bottom: 0.5rem;
+        background-color: rgba(249, 245, 255, 0.8); border: 1px solid rgba(255, 255, 255, 0.3);
+        padding: 1.2rem; border-radius: 1rem; margin-bottom: 0.5rem;
     }
-    
-    /* 추천 질문 버튼 (st.button) 스타일 */
     .stButton>button {
-        background-color: #FFFFFF;
-        color: #555;
-        border: 1px solid #DDD;
-        border-radius: 20px;
-        padding: 8px 16px;
-        transition: all 0.2s ease-in-out;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        background-color: #FFFFFF; color: #555; border: 1px solid #DDD; border-radius: 20px;
+        padding: 8px 16px; transition: all 0.2s ease-in-out; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     }
     .stButton>button:hover {
-        background-color: #F0F0F5;
-        color: #7A42E2;
-        border-color: #7A42E2;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        background-color: #F0F0F5; color: #7A42E2; border-color: #7A42E2;
+        transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
-    
-    /* 채팅 입력창 스타일 */
-    .stChatInput {
-        background-color: #FFFFFF;
-        padding: 1rem;
-        border-top: 1px solid #E5E7EB;
-    }
-
-    /* 애니메이션 효과 */
+    .stChatInput { background-color: #FFFFFF; padding: 1rem; border-top: 1px solid #E5E7EB; }
     @keyframes fadeIn {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
     }
 </style>
 """, unsafe_allow_html=True)
-
-
-# --- 3. RAG 챗봇 로직 로드 ---
-# NOTE: rag_logic.py 파일이 같은 경로에 있어야 합니다.
-rag_chain = get_rag_chain()
 
 # --- 4. 자동 스크롤 함수 ---
 def auto_scroll():
@@ -127,12 +84,9 @@ def auto_scroll():
 
 # --- 5. UI 렌더링 함수 ---
 def render_welcome_elements():
-    # 챗봇 첫인사 
-    # ✨ 수정된 부분: 아바타를 '✨'로 통일하여 일관성 유지
     with st.chat_message("assistant", avatar="✨"):
         st.markdown("궁금한 내용을 입력해주시면, 답변을 빠르게 챗봇이 도와드릴게요.")
 
-    # FAQ 카드
     st.markdown('<div class="faq-card">', unsafe_allow_html=True)
     st.markdown('<div style="font-size: 18px; font-weight: 700;"><b>많이 찾는 질문 TOP 3</b></div>', unsafe_allow_html=True)
     faq_items = {
@@ -152,50 +106,36 @@ st.title("모구챗 ✨")
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# rag_chain 로드 성공 시에만 환영 요소 렌더링
-if rag_chain:
-    if not st.session_state.messages:
-        render_welcome_elements()
+# RAG 체인 로드 성공 여부에 따라 UI 분기 처리
+if not rag_chain:
+    st.error("챗봇 초기화에 실패했습니다. API 토큰이 올바르게 설정되었는지 확인해주세요.")
 else:
-    # rag_chain 로드 실패 시 (API 키 문제 등)
-    with st.chat_message("assistant", avatar="✨"): # ✨ 수정된 부분: 에러 메시지 아바타도 통일
-        st.error("챗봇 초기화에 실패했습니다. **HUGGINGFACEHUB_API_TOKEN** 환경 변수를 올바르게 설정했는지 확인해 주세요.")
+    # 이전 대화 내용 표시
+    if st.session_state.messages:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"], avatar="✨" if message["role"] == "assistant" else "👤"):
+                st.markdown(message["content"])
+    else:
+        render_welcome_elements()
 
-if st.session_state.messages:
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"], avatar="✨" if message["role"] == "assistant" else "👤"):
-            st.markdown(message["content"])
+    # 사용자 입력 처리
+    prompt = st.chat_input("궁금한 내용을 입력하세요...")
+    if "prompt_from_button" in st.session_state and st.session_state.prompt_from_button:
+        prompt = st.session_state.prompt_from_button
+        del st.session_state.prompt_from_button
 
-prompt = st.chat_input("궁금한 내용을 입력하세요...")
-if "prompt_from_button" in st.session_state and st.session_state.prompt_from_button:
-    prompt = st.session_state.prompt_from_button
-    del st.session_state.prompt_from_button
+    if prompt:
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user", avatar="👤"):
+            st.markdown(prompt)
 
-# web.py 파일의 메인 로직 부분 (if prompt: 블록 전체를 교체)
-
-if prompt:
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar="👤"):
-        st.markdown(prompt)
-
-    with st.chat_message("assistant", avatar="✨"):
-        if rag_chain:
-            # ✅ [수정] .stream() 대신 .invoke()를 사용하여 전체 응답을 한 번에 받습니다.
-            # 처음 실행 시 모델 로딩 때문에 시간이 오래 걸릴 수 있습니다.
+        with st.chat_message("assistant", avatar="✨"):
             with st.spinner("답변을 생성하고 있어요... 잠시만 기다려주세요."):
                 full_response = rag_chain.invoke({"question": prompt})
-            
-            # 스트리밍이 아니므로, 받은 전체 응답을 st.markdown으로 바로 표시합니다.
             st.markdown(full_response)
-        else:
-            full_response = "죄송합니다, 챗봇을 초기화하는 데 문제가 발생했습니다. 설정을 확인해 주세요."
-            st.write(full_response)
 
-    # 전체 응답을 세션 상태에 저장
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
+        st.rerun()
 
-    auto_scroll()
-    st.rerun()
-else:
-    # 입력이 없을 때도 자동 스크롤을 호출하여 UI를 일관되게 유지
-    auto_scroll()
+# 항상 자동 스크롤 실행
+auto_scroll()
