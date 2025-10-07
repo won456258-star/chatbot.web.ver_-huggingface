@@ -4,10 +4,10 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import os
-from dotenv import load_dotenv # ✅ 복구: 로컬 환경에서 .env 파일 로드
+from dotenv import load_dotenv
 
-# .env 파일에서 환경 변수를 로드합니다.
-load_dotenv() # ✅ 복구: .env 파일 로드
+# .env 파일에서 환경 변수를 로드합니다. (로컬 테스트 시 필요)
+load_dotenv()
 
 # rag_logic.py에서 RAG 체인을 가져오는 함수를 임포트합니다.
 from rag_logic import get_rag_chain 
@@ -116,86 +116,95 @@ st.markdown("""
 
 
 # --- 3. RAG 챗봇 로직 로드 ---
+# NOTE: rag_logic.py 파일이 같은 경로에 있어야 합니다.
 rag_chain = get_rag_chain() 
 
 # --- 4. 자동 스크롤 함수 ---
 def auto_scroll():
-    components.html(
-        """<script> window.parent.document.querySelector('.st-emotion-cache-1f1G203').scrollTo(0, 99999); </script>""",
-        height=0)
+    components.html(
+        """<script> window.parent.document.querySelector('.st-emotion-cache-1f1G203').scrollTo(0, 99999); </script>""",
+        height=0)
 
 # --- 5. UI 렌더링 함수 ---
 def render_welcome_elements():
-    # 챗봇 첫인사
-    with st.chat_message("assistant", avatar="🤖"):
-        st.markdown("궁금한 내용을 입력해주시면, 답변을 빠르게 챗봇이 도와드릴게요.")
+    # 챗봇 첫인사
+    with st.chat_message("assistant", avatar="🤖"):
+        st.markdown("궁금한 내용을 입력해주시면, 답변을 빠르게 챗봇이 도와드릴게요.")
 
-    # FAQ 카드
-    st.markdown('<div class="faq-card">', unsafe_allow_html=True)
-    st.markdown('<div style="font-size: 18px; font-weight: 700;"><b>많이 찾는 질문 TOP 3</b></div>', unsafe_allow_html=True)
-    faq_items = {
-        "모구 수수료 제한은 어떻게 되나요?": "수수료 제한",
-        "모구 마감 기한은 며칠까지 가능한가요?": "마감 기한",
-        "모구에서 팔면 안되는 물건은 무엇인가요?": "판매 금지 품목"
-    }
-    for query, text in faq_items.items():
-        if st.button(text, key=f"faq_{text}", use_container_width=True):
-            st.session_state.prompt_from_button = query
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown("<br>", unsafe_allow_html=True)
+    # FAQ 카드
+    st.markdown('<div class="faq-card">', unsafe_allow_html=True)
+    st.markdown('<div style="font-size: 18px; font-weight: 700;"><b>많이 찾는 질문 TOP 3</b></div>', unsafe_allow_html=True)
+    faq_items = {
+        "모구 수수료 제한은 어떻게 되나요?": "수수료 제한",
+        "모구 마감 기한은 며칠까지 가능한가요?": "마감 기한",
+        "모구에서 팔면 안되는 물건은 무엇인가요?": "판매 금지 품목"
+    }
+    for query, text in faq_items.items():
+        if st.button(text, key=f"faq_{text}", use_container_width=True):
+            st.session_state.prompt_from_button = query
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
 
 # --- 6. 메인 애플리케이션 로직 ---
 st.title("모구챗 ✨")
 
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state.messages = []
 
 # rag_chain 로드 성공 시에만 환영 요소 렌더링
 if rag_chain:
-    if not st.session_state.messages:
-        render_welcome_elements()
+    if not st.session_state.messages:
+        render_welcome_elements()
 else:
-    # rag_chain 로드 실패 시 (API 키 문제 등)
-    with st.chat_message("assistant", avatar="🤖"):
-        st.error("챗봇 초기화에 실패했습니다. **HUGGINGFACEHUB_API_TOKEN** 환경 변수를 올바르게 설정했는지 확인해 주세요.")
+    # rag_chain 로드 실패 시 (API 키 문제 등)
+    with st.chat_message("assistant", avatar="🤖"):
+        st.error("챗봇 초기화에 실패했습니다. **HUGGINGFACEHUB_API_TOKEN** 환경 변수를 올바르게 설정했는지 확인해 주세요.")
 
 if st.session_state.messages:
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"], avatar="✨" if message["role"] == "assistant" else "👤"):
-            st.markdown(message["content"])
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"], avatar="✨" if message["role"] == "assistant" else "👤"):
+            st.markdown(message["content"])
 
 prompt = st.chat_input("궁금한 내용을 입력하세요...")
 if "prompt_from_button" in st.session_state and st.session_state.prompt_from_button:
-    prompt = st.session_state.prompt_from_button
-    del st.session_state.prompt_from_button
+    prompt = st.session_state.prompt_from_button
+    del st.session_state.prompt_from_button
 
 if prompt:
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar="👤"):
-        st.markdown(prompt)
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user", avatar="👤"):
+        st.markdown(prompt)
 
-    with st.chat_message("assistant", avatar="✨"):
-        if rag_chain:
-            response_stream = rag_chain.stream({"question": prompt})
-            
-            stream_placeholder = st.empty()
-            full_response_content = ""
-            
-            # LCEL RAG 스트리밍 처리 로직
-            for chunk in response_stream:
-                if isinstance(chunk, str):
-                    full_response_content += chunk
-                
-                stream_placeholder.markdown(full_response_content)
+    with st.chat_message("assistant", avatar="✨"):
+        if rag_chain:
+            response_stream = rag_chain.stream({"question": prompt})
+            
+            stream_placeholder = st.empty()
+            full_response_content = ""
+            
+            # ⚠️ [중요] LCEL 스트리밍 AttributeError 해결 로직 적용 ⚠️
+            for chunk in response_stream:
+                # 딕셔너리 형태의 청크일 경우 'answer' 키를 확인합니다.
+                if isinstance(chunk, dict) and 'answer' in chunk:
+                    content_part = chunk['answer']
+                # 이미 문자열로 넘어온 청크일 경우를 대비합니다.
+                elif isinstance(chunk, str):
+                    content_part = chunk
+                else:
+                    # 리트리버 출력 등 다른 타입을 무시합니다.
+                    continue
+                
+                full_response_content += content_part
+                stream_placeholder.markdown(full_response_content)
 
-            full_response = full_response_content
-        else:
-            full_response = "죄송합니다, 챗봇을 초기화하는 데 문제가 발생했습니다. **HUGGINGFACEHUB_API_TOKEN** 환경 변수를 확인해 주세요."
-            st.write(full_response)
-    
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
-    
-    auto_scroll()
-    st.rerun()
+            full_response = full_response_content
+        else:
+            full_response = "죄송합니다, 챗봇을 초기화하는 데 문제가 발생했습니다. **HUGGINGFACEHUB_API_TOKEN** 환경 변수를 확인해 주세요."
+            st.write(full_response)
+    
+    st.session_state.messages.append({"role": "assistant", "content": full_response})
+    
+    auto_scroll()
+    st.rerun()
 else:
-    auto_scroll()
+    auto_scroll()
