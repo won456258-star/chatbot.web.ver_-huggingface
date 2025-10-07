@@ -1,4 +1,4 @@
-# 파일명: rag_logic.py (최종 수정 버전)
+# 파일명: rag_logic.py
 
 import streamlit as st
 from langchain_community.embeddings import SentenceTransformerEmbeddings
@@ -8,12 +8,15 @@ from langchain.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from operator import itemgetter
 
-# ✅ 변경점: @st.cache_resource 데코레이터가 인자를 받을 수 있도록 수정합니다.
-# 이렇게 하면 API 키가 변경될 때만 함수가 다시 실행됩니다.
+# web.py에서 에러를 잡아 처리할 수 있도록 사용자 정의 에러를 만듭니다.
+class RagChainInitializationError(Exception):
+    pass
+
 @st.cache_resource
 def get_rag_chain(api_key: str):
     """
     Hugging Face API 키를 인자로 받아 RAG 체인을 생성하고 반환합니다.
+    오류 발생 시 RagChainInitializationError를 발생시킵니다.
     """
     try:
         # 1. 임베딩 모델 설정
@@ -34,7 +37,6 @@ def get_rag_chain(api_key: str):
 
         llm = HuggingFaceEndpoint(
             repo_id=HUGGING_FACE_MODEL_ID,
-            # ✅ 변경점: huggingfacehub_api_token 인자에 전달받은 키를 사용합니다.
             huggingfacehub_api_token=api_key,
             task="text-generation",
             max_new_tokens=512,
@@ -70,5 +72,5 @@ def get_rag_chain(api_key: str):
         return rag_chain
 
     except Exception as e:
-        st.error(f"RAG 체인 초기화 중 치명적인 오류 발생: {e}")
-        return None
+        # 🚫 st.error()를 호출하는 대신, 예외를 발생시켜 web.py에 알립니다.
+        raise RagChainInitializationError(f"RAG 체인 생성 중 오류 발생: {e}")
