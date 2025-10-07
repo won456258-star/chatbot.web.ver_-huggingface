@@ -1,9 +1,10 @@
-# 파일명: rag_logic.py (Hugging Face 환경용 최종 버전)
+# 파일명: rag_logic.py (Hugging Face 환경용 최종 수정)
 
 import streamlit as st
 import os
-from langchain_community.embeddings import HuggingFaceEmbeddings # Hugging Face 임베딩
-from langchain_community.llms import HuggingFaceHub # Hugging Face LLM 추론 API
+# ✅ 변경: SentenceTransformerEmbeddings 사용 시도 (HuggingFaceEmbeddings의 람다 오류 회피)
+from langchain_community.embeddings import SentenceTransformerEmbeddings as HuggingFaceEmbeddings 
+from langchain_community.llms import HuggingFaceHub
 from langchain_community.vectorstores import FAISS
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
@@ -12,8 +13,6 @@ from langchain_core.output_parsers import StrOutputParser
 
 # --- Hugging Face 환경 변수 확인 ---
 def check_hf_api_token():
-    """HUGGINGFACEHUB_API_TOKEN 환경 변수가 로드되었는지 확인"""
-    # os.environ은 .env 파일 (로컬) 또는 Streamlit Secrets (클라우드) 모두 처리
     if os.getenv("HUGGINGFACEHUB_API_TOKEN"):
         return True
     else:
@@ -26,8 +25,7 @@ def get_rag_chain():
         return None
 
     try:
-        # 2. 임베딩 모델 설정 (Hugging Face 임베딩 모델 사용)
-        # 이 모델로 'my_faiss_db'를 미리 생성해야 합니다.
+        # 2. 임베딩 모델 설정 (SentenceTransformerEmbeddings 사용)
         embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
@@ -40,8 +38,7 @@ def get_rag_chain():
         )
         retriever = vectorstore.as_retriever()
         
-        # 4. LLM 초기화 (Hugging Face Hub API 사용)
-        # 모델 ID는 무료 추론이 지원되는 경량 모델을 사용합니다.
+        # 4. LLM 초기화
         HUGGING_FACE_MODEL_ID = "google/gemma-2b-it" 
         
         llm = HuggingFaceHub(
@@ -74,6 +71,5 @@ def get_rag_chain():
         return rag_chain
 
     except Exception as e:
-        # 자세한 오류 로그를 출력하고 사용자에게 안내
         st.error(f"RAG 체인 초기화 중 치명적인 오류 발생: {e}")
         return None
