@@ -1,12 +1,13 @@
 # 파일명: rag_logic.py
 
 import streamlit as st
-from langchain_community.embeddings import SentenceTransformerEmbeddings
-from langchain_huggingface import HuggingFaceEndpoint
+# ❗ [수정] 최신 임베딩 클래스를 import 합니다.
+from langchain_huggingface import HuggingFaceEmbeddings, HuggingFaceEndpoint
 from langchain_community.vectorstores import FAISS
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from operator import itemgetter
+# ❗ [수정] RunnablePassthrough를 import 합니다.
+from langchain_core.runnables import RunnablePassthrough
 
 # web.py에서 에러를 잡아 처리할 수 있도록 사용자 정의 에러를 만듭니다.
 class RagChainInitializationError(Exception):
@@ -19,9 +20,12 @@ def get_rag_chain(api_key: str):
     오류 발생 시 RagChainInitializationError를 발생시킵니다.
     """
     try:
-        # 1. 임베딩 모델 설정
-        embeddings = SentenceTransformerEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
+        # 1. 임베딩 모델 설정 (최신 클래스로 변경)
+        # ❗ [수정] SentenceTransformerEmbeddings -> HuggingFaceEmbeddings
+        embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            model_kwargs={'device': 'cpu'},
+            encode_kwargs={'normalize_embeddings': True}
         )
 
         # 2. FAISS 벡터 저장소 로드
@@ -58,11 +62,12 @@ def get_rag_chain(api_key: str):
         """
         prompt = ChatPromptTemplate.from_template(template)
 
-        # 5. RAG 체인 구성
+        # 5. RAG 체인 구성 (RunnablePassthrough 사용)
+        # ❗ [수정] itemgetter 대신 RunnablePassthrough를 사용하여 더 명확하게 구성합니다.
         rag_chain = (
             {
-                "context": itemgetter("question") | retriever,
-                "question": itemgetter("question"),
+                "context": retriever,
+                "question": RunnablePassthrough(),
             }
             | prompt
             | llm
