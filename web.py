@@ -171,6 +171,8 @@ if "prompt_from_button" in st.session_state and st.session_state.prompt_from_but
     prompt = st.session_state.prompt_from_button
     del st.session_state.prompt_from_button
 
+# web.py 파일의 메인 로직 부분 (if prompt: 블록 전체를 교체)
+
 if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="👤"):
@@ -178,29 +180,22 @@ if prompt:
 
     with st.chat_message("assistant", avatar="✨"):
         if rag_chain:
-            response_stream = rag_chain.stream({"question": prompt})
-            stream_placeholder = st.empty()
-            full_response_content = ""
-
-            for chunk in response_stream:
-                if isinstance(chunk, dict) and 'answer' in chunk:
-                    content_part = chunk.get('answer', '') 
-                elif isinstance(chunk, str):
-                    content_part = chunk
-                else:
-                    continue
-
-                if content_part:
-                    full_response_content += content_part
-                    stream_placeholder.markdown(full_response_content)
+            # ✅ [수정] .stream() 대신 .invoke()를 사용하여 전체 응답을 한 번에 받습니다.
+            # 처음 실행 시 모델 로딩 때문에 시간이 오래 걸릴 수 있습니다.
+            with st.spinner("답변을 생성하고 있어요... 잠시만 기다려주세요."):
+                full_response = rag_chain.invoke({"question": prompt})
+            
+            # 스트리밍이 아니므로, 받은 전체 응답을 st.markdown으로 바로 표시합니다.
+            st.markdown(full_response)
         else:
-            full_response_content = "죄송합니다, 챗봇을 초기화하는 데 문제가 발생했습니다. **HUGGINGFACEHUB_API_TOKEN** 환경 변수를 확인해 주세요."
-            st.write(full_response_content)
-    
-    # ✨ 수정된 부분: 변수 재할당 없이 'full_response_content'를 직접 사용하여 코드 단순화
-    st.session_state.messages.append({"role": "assistant", "content": full_response_content})
+            full_response = "죄송합니다, 챗봇을 초기화하는 데 문제가 발생했습니다. 설정을 확인해 주세요."
+            st.write(full_response)
+
+    # 전체 응답을 세션 상태에 저장
+    st.session_state.messages.append({"role": "assistant", "content": full_response})
 
     auto_scroll()
     st.rerun()
 else:
+    # 입력이 없을 때도 자동 스크롤을 호출하여 UI를 일관되게 유지
     auto_scroll()
