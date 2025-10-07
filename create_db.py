@@ -32,7 +32,7 @@ def create_vector_db():
     print(f"✅ 문서를 {len(docs)}개의 조각으로 분할했습니다.")
 
     # 4. 임베딩 모델 설정
-    model_name = "jhgan/ko-sroberta-multitask"
+    model_name = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     model_kwargs = {'device': 'cpu'}
     encode_kwargs = {'normalize_embeddings': True}
     embeddings = HuggingFaceEmbeddings(

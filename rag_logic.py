@@ -23,7 +23,7 @@ def get_rag_chain(api_key: str):
         # 1. 임베딩 모델 설정 (최신 클래스로 변경)
         # ❗ [수정] SentenceTransformerEmbeddings -> HuggingFaceEmbeddings
         embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2",
+            model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
             model_kwargs={'device': 'cpu'},
             encode_kwargs={'normalize_embeddings': True}
         )
