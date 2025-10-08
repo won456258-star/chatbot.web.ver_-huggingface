@@ -1,100 +1,134 @@
-# 파일명: web.py
-
-# --- 1. 필수 라이브러리 임포트 ---
 import streamlit as st
-import streamlit.components.v1 as components
 import os
+from langchain_community.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_huggingface import HuggingFaceHub
+from langchain.prompts import ChatPromptTemplate
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.chains import create_retrieval_chain
 from dotenv import load_dotenv
 
-# ✅ 1. 페이지 설정을 가장 먼저 실행합니다.
-st.set_page_config(page_title="모구챗 - My RAG 챗봇", page_icon="✨", layout="centered")
+# .env 파일에서 환경 변수 로드
+load_dotenv()
 
-# ✅ 2. 페이지 설정 이후에 다른 모듈을 임포트합니다.
-from rag_logic import get_rag_chain, RagChainInitializationError
+# 허깅페이스 API 토큰 설정
+# Streamlit Secrets나 직접 코드를 통해 설정할 수 있습니다.
+# 이 예제에서는 .env 파일을 사용합니다.
+HUGGINGFACEHUB_API_TOKEN = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 
-# --- 2. API 키 및 RAG 체인 로드 ---
-rag_chain = None  # 기본값을 None으로 설정
-try:
-    # Streamlit Secrets 또는 .env에서 API 키 로드
-    try:
-        HUGGINGFACE_API_KEY = st.secrets["HUGGINGFACEHUB_API_TOKEN"]
-    except (FileNotFoundError, KeyError):
-        load_dotenv()
-        HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACEHUB_API_TOKEN")
+# 페이지 설정
+st.set_page_config(page_title="PDF 문서 기반 챗봇", layout="wide")
+st.title("📄 PDF 문서와 대화하는 챗봇")
 
-    # ✅ 3. rag_logic의 오류를 여기서 직접 처리합니다.
-    if HUGGINGFACE_API_KEY:
-        rag_chain = get_rag_chain(HUGGINGFACE_API_KEY)
-    else:
-        st.error("Hugging Face API 토큰을 찾을 수 없습니다. Secrets 또는 .env 파일을 확인해주세요.")
+# 사이드바 설정
+with st.sidebar:
+    st.header("PDF 파일 업로드")
+    uploaded_file = st.file_uploader("여기에 PDF 파일을 업로드하세요.", type="pdf")
+    st.info("PDF를 업로드하면 내용 처리가 시작됩니다.")
 
-except RagChainInitializationError as e:
-    # rag_logic에서 보낸 예외를 받아서 UI에 에러 메시지를 표시합니다.
-    st.error(e)
+# 벡터 저장소를 세션 상태에 초기화
+if "vector_store" not in st.session_state:
+    st.session_state.vector_store = None
 
-# --- 3. CSS ---
-st.markdown("""
-<style>
-    /* CSS 내용은 이전과 동일 */
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
-    html, body, [class*="st-"] { font-family: 'Noto Sans KR', sans-serif; }
-    .st-emotion-cache-1y4p8pa { padding: 0; }
-    /* ... (나머지 CSS 생략) ... */
-</style>
-""", unsafe_allow_html=True)
-
-
-# --- 4. 자동 스크롤 함수 ---
-def auto_scroll():
-    components.html(
-        """<script> window.parent.document.querySelector('.st-emotion-cache-1f1G203').scrollTo(0, 99999); </script>""",
-        height=0)
-
-# --- 5. UI 렌더링 함수 ---
-def render_welcome_elements():
-    # ... (이전과 동일) ...
-    with st.chat_message("assistant", avatar="✨"):
-        st.markdown("궁금한 내용을 입력해주시면, 답변을 빠르게 챗봇이 도와드릴게요.")
-    # ... (이하 생략) ...
-
-# --- 6. 메인 애플리케이션 로직 ---
-st.title("모구챗 ✨")
-
+# 대화 기록을 세션 상태에 초기화
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# RAG 체인 로드 성공 여부에 따라 UI 분기 처리
-if not rag_chain:
-    # 에러 메시지는 이미 위 try-except 블록에서 표시했으므로 여기서는 아무것도 안 함
-    pass
-else:
-    # 이전 대화 내용 표시
-    if st.session_state.messages:
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"], avatar="✨" if message["role"] == "assistant" else "👤"):
-                st.markdown(message["content"])
-    else:
-        render_welcome_elements()
+# 함수: PDF에서 텍스트를 추출하고 청크로 분할
+def process_pdf(file):
+    if file is not None:
+        # 임시 파일로 저장
+        temp_file_path = f"./temp_{file.name}"
+        with open(temp_file_path, "wb") as f:
+            f.write(file.getvalue())
 
-    # 사용자 입력 처리
-    prompt = st.chat_input("궁금한 내용을 입력하세요...")
-    # ... (이하 로직은 이전과 동일) ...
-    if "prompt_from_button" in st.session_state and st.session_state.prompt_from_button:
-        prompt = st.session_state.prompt_from_button
-        del st.session_state.prompt_from_button
+        # PDF 로더
+        loader = PyPDFLoader(temp_file_path)
+        documents = loader.load()
 
-    if prompt:
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user", avatar="👤"):
-            st.markdown(prompt)
+        # 텍스트 분할
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+        chunks = text_splitter.split_documents(documents)
 
-        with st.chat_message("assistant", avatar="✨"):
-            with st.spinner("답변을 생성하고 있어요... 잠시만 기다려주세요."):
-                full_response = rag_chain.invoke({"question": prompt})
-            st.markdown(full_response)
+        # 임시 파일 삭제
+        os.remove(temp_file_path)
+        return chunks
+    return None
 
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
-        st.rerun()
+# 함수: 임베딩 및 벡터 저장소 생성
+def create_vector_store(chunks):
+    if chunks:
+        embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        vector_store = FAISS.from_documents(chunks, embedding=embeddings)
+        return vector_store
+    return None
 
-# 항상 자동 스크롤 실행
-auto_scroll()
+# PDF 파일이 업로드되면 처리 시작
+if uploaded_file is not None and st.session_state.vector_store is None:
+    with st.spinner("PDF 파일을 처리 중입니다... 잠시만 기다려주세요."):
+        # 1. PDF 처리
+        text_chunks = process_pdf(uploaded_file)
+        
+        # 2. 벡터 저장소 생성
+        if text_chunks:
+            st.session_state.vector_store = create_vector_store(text_chunks)
+            st.success("PDF 파일 처리가 완료되었습니다! 이제 질문을 시작할 수 있습니다.")
+        else:
+            st.error("PDF 파일에서 텍스트를 추출하지 못했습니다.")
+
+# 이전 대화 기록 표시
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# 사용자 입력 처리
+user_question = st.chat_input("PDF 내용에 대해 질문해보세요.")
+
+if user_question and st.session_state.vector_store:
+    # 사용자 질문을 대화 기록에 추가
+    st.session_state.messages.append({"role": "user", "content": user_question})
+    with st.chat_message("user"):
+        st.markdown(user_question)
+
+    # LLM 모델 초기화
+    llm = HuggingFaceHub(
+        repo_id="mistralai/Mixtral-8x7B-Instruct-v0.1",
+        model_kwargs={"temperature": 0.1, "max_length": 1024}
+    )
+
+    # 프롬프트 템플릿 정의 (최신 방식)
+    template = """
+    당신은 친절한 AI 어시스턴트입니다. 주어진 문맥(context) 정보를 바탕으로 사용자의 질문(input)에 대해 답변해주세요.
+    
+    [Context]:
+    {context}
+    
+    [Question]:
+    {input}
+    
+    [Answer]:
+    """
+    prompt = ChatPromptTemplate.from_template(template)
+
+    # RAG 체인 생성 (최신 방식)
+    document_chain = create_stuff_documents_chain(llm, prompt)
+    retriever = st.session_state.vector_store.as_retriever()
+    retrieval_chain = create_retrieval_chain(retriever, document_chain)
+
+    # 챗봇 응답 생성
+    with st.chat_message("assistant"):
+        with st.spinner("답변을 생성하는 중입니다..."):
+            try:
+                # 체인 호출
+                result = retrieval_chain.invoke({"input": user_question})
+                response = result.get("answer", "죄송합니다, 답변을 생성하지 못했습니다.")
+                st.write(response)
+                # 어시스턴트 응답을 대화 기록에 추가
+                st.session_state.messages.append({"role": "assistant", "content": response})
+            except Exception as e:
+                st.error(f"오류가 발생했습니다: {e}")
+
+elif user_question:
+    st.warning("먼저 PDF 파일을 업로드해주세요.")
